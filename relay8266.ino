@@ -21,7 +21,7 @@ int relay1_state = HIGH;
 int relay2_state = HIGH;
 
 String serialBuffer = "";
-const char* colors[] = {"ffa8a8","ffd4a8","fff1a8","a8ffa8","a8e2ff","d4a8ff"};
+const char* colors[] = {"ffadad","ffd6a5","fdffb6","caffbf","9bf6ff","a0c4ff","bdb2ff","ffc6ff","fffffc"};
 int colorIndex = 0;
 
 WiFiUDP udp;
@@ -59,8 +59,16 @@ String getTimestamp() {
 
 void appendToSerialBuffer(String message) {
   String timestamp = "<span style='color: #" + String(colors[colorIndex]) + ";'>" + getTimestamp() + "</span>";
-  serialBuffer += timestamp + " - " + message + "<br>"; // Use <br> for HTML line breaks
-  colorIndex = (colorIndex + 1) % 6; // cycle through colors array.
+  String coloredMessage = message;
+
+  if (message.indexOf("ON") != -1) {
+    coloredMessage.replace("ON", "<span style='color: #adf7b6;'>ON</span>");
+  } else if (message.indexOf("OFF") != -1) {
+    coloredMessage.replace("OFF", "<span style='color: #ff5e6e;'>OFF</span>");
+  }
+
+  serialBuffer += timestamp + " - " + coloredMessage + "<br>"; // Use <br> for HTML line breaks
+  colorIndex = (colorIndex + 1) % 9; // cycle through colors array.
   if (serialBuffer.length() > 2000) { // Increase buffer size for HTML
     serialBuffer = serialBuffer.substring(serialBuffer.length() - 2000);
   }
@@ -90,25 +98,23 @@ String getPinStatus() {
     // Read the pin state
     int pinState = digitalRead(actualPin);
     String pinColor = (pinState == HIGH) ? "#adf7b6" : "#ff5e6e";
-    pinStatus += "{\"pin\":" + String(pin) + ",\"state\":\"" + (pinState == HIGH ? "HIGH" : "LOW") + "\",\"color\":\"" + pinColor + "\"},";
+    pinStatus += "{\"pin\":" + String(pin) + ",\"state\":\"" + String(pinState) + "\",\"color\":\"" + pinColor + "\"},"; // Send pin state as 1 or 0
   }
   pinStatus.remove(pinStatus.length() - 1);  // Remove last comma
   return "[" + pinStatus + "]";
 }
 
 String getPinTableHTML() {
-  // Pin mapping for ESP8266 GPIO to Dxx pins
-  String pinNames[] = { "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", "D13", "D14", "D15" };
-
-  String html = "<table style='width:100%; text-align:center; border-collapse: collapse; margin-top: 20px;'>";
-  html += "<tr><th>Pin (D)</th><th>Status</th></tr>";
+  String html = "<style> @media (min-width: 768px) { .pin-container { flex-wrap: nowrap; } } </style>"; // Add media query
+  html += "<div class='pin-container' style='display: flex; justify-content: center; flex-wrap: wrap; margin-top: 10px;'>"; // Horizontal layout
 
   for (int pin = 0; pin < DIGITAL_PIN_COUNT; pin++) {
-    html += "<tr><td style='padding: 5px;'>" + pinNames[pin] + "</td>";
-    html += "<td id='pin" + String(pin) + "' style='background-color:#ff5e6e; font-weight: bold; color: #333; padding: 5px; width: 30px;'></td></tr>";
+    html += "<div style='text-align: center; margin: 2px; padding: 2px; border: 1px solid #333; border-radius: 3px; min-width: 30px;'>"; // reduced margins/padding
+    html += "<span id='pin" + String(pin) + "' style='background-color:#ff5e6e; font-weight: bold; color: #333; padding: 3px; width: 30px; display: inline-block;'></span>"; // reduced padding
+    html += "</div>";
   }
 
-  html += "</table>";
+  html += "</div>";
   return html;
 }
 
@@ -120,7 +126,7 @@ String getHTML() {
   html += "body { background-color: #121212; color: #ffffff; font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 20px; }";
   html += ".container { display: flex; justify-content: space-evenly; flex-direction: row; align-items: flex-start; flex-wrap: wrap; }";
   html += ".card { background: #1e1e1e; padding: 20px; margin: 10px; width: 80%; max-width: 300px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }";
-  html += ".serial-console { width: 100%; max-width: 718px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }";
+  html += ".serial-console { width: 100%; max-width: 770px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }";
   html += ".button { display: inline-block; padding: 10px 20px; margin: 10px; border: none; border-radius: 5px; color: white; text-decoration: none; font-size: 16px; font-weight: bold; cursor: pointer; }";
   html += ".button:disabled, .button:hover:disabled { background: #9e9e9e !important; cursor: not-allowed; }";
   html += ".button.turn-on:hover { background: #adf7b69e; }";
@@ -141,6 +147,7 @@ String getHTML() {
 
   html += "<div class='card serial-console'><h2>Serial Console</h2>";
   html += "<div class='console' id='console'></div>";
+  html += getPinTableHTML(); // Add the pin display here
   html += "<script>";
   html += "setInterval(() => { fetch('/serial').then(res => res.text()).then(text => { document.getElementById('console').innerHTML = text; document.getElementById('console').scrollTop = document.getElementById('console').scrollHeight; }); }, 800);"; // Use innerHTML for HTML content
   html += "function toggleRelay(relay, action) { fetch('/relay' + relay + '/' + action).then(() => updateStatus()); }";
@@ -156,15 +163,10 @@ String getHTML() {
   html += "setInterval(() => { fetch('/pinstatus').then(res => res.json()).then(data => {";
   html += "data.forEach(pin => {";
   html += "  document.getElementById('pin' + pin.pin).style.backgroundColor = pin.color;";
-  html += "  document.getElementById('pin' + pin.pin).innerText = pin.state;";
+  html += "  document.getElementById('pin' + pin.pin).innerText = 'D' + pin.pin;";
   html += "});";
   html += "}); }, 500);";  // Update every 500 ms
   html += "</script></div>";
-
-  html += "<div class='card'><h2>Digital Pins</h2>";
-  html += getPinTableHTML();
-  html += "</div>";
-
   html += "</div></body></html>";
   return html;
 }
